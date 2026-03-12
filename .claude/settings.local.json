@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx expo:*)",
+      "Bash(npx tsc:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(node -e \"console.log\\(require\\(''C:/Users/nicod/OneDrive/Escritorio/appFIT/node_modules/react-native/package.json''\\).version\\)\")",
+      "Bash(npm install react-native@0.81.5 --legacy-peer-deps)",
+      "Bash(Remove-Item -Recurse -Force android)",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__get_logs",
+      "Bash(expo run:android:*)",
+      "Skill(claude-api)",
+      "mcp__figma__generate_figma_design",
+      "Bash(sleep 12 && curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8081/ 2>&1)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
+}
