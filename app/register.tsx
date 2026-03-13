@@ -8,7 +8,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { colors } from '@/constants/Colors';
 import { supabase } from '@/utils/supabase';
 import { useT } from '@/constants/i18n';
-import * as AuthSession from 'expo-auth-session';
+import * as Linking from 'expo-linking';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -60,7 +60,7 @@ export default function RegisterScreen() {
     setError('');
     setGoogleLoading(true);
     try {
-      const redirectTo = AuthSession.makeRedirectUri();
+      const redirectTo = 'appfit://';
       const { data, error: authError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo, skipBrowserRedirect: true },

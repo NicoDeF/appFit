@@ -42,9 +42,8 @@ export default function MacrosScreen() {
   const over = totals.cal > adjustedTdee;
 
   const SOURCE_LABEL: Record<string, { label: string; color: string }> = {
-    local: { label: t.macros.sourceLocal, color: colors.green },
-    db:    { label: t.macros.sourceSaved, color: colors.blue },
-    ai:    { label: t.macros.sourceAI, color: colors.purple },
+    db: { label: t.macros.sourceSaved, color: colors.blue },
+    ai: { label: t.macros.sourceAI,   color: colors.accent },
   };
 
   // Debounced search

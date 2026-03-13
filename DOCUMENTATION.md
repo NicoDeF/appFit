@@ -149,13 +149,44 @@ AppState
 
 ---
 
-## Food Database
+## Food Search
 
-`constants/data.ts` — `SAMPLE_MEALS` — Spanish/Latin foods:
-- Tacos, empanadas, arepa, tamales, ceviche, etc.
-- Targeting: Mexico, Spain, Argentina, Colombia
+Cascading search — `utils/foodSearch.ts`:
 
-Each meal: `{ id, name, cal, p (protein g), c (carbs g), f (fat g) }`
+```
+User types query (debounced 500ms)
+        │
+        ▼ STEP 1 — Supabase foods table (cache of previous AI searches)
+  SELECT * FROM foods WHERE name ILIKE '%query%'
+  Found? → show results (source: "Guardado")
+        │
+        │ Not found
+        ▼ STEP 2 — Supabase Edge Function estimate-macros
+  POST /functions/v1/estimate-macros { query }
+        │
+        ▼ Inside Edge Function (Deno on Supabase)
+  1. Check foods table again
+  2. If not found → call Claude claude-haiku
+  3. Claude returns JSON (object or array for multiple foods)
+  4. Normalize to array, save to foods table (best-effort)
+  5. Return array of results
+        │
+        ▼
+  App shows each food as individual result (source: "Estimado por IA")
+```
+
+**Edge Function:** `supabase/functions/estimate-macros/index.ts`
+- Deployed with `--no-verify-jwt` (public endpoint)
+- `ANTHROPIC_API_KEY` stored as Supabase secret
+- Handles single food → object and multiple foods → array
+- Strips markdown code fences from Claude response before parsing
+- Saves new foods to `foods` table as cache for future searches
+
+**foods table** (Supabase PostgreSQL):
+```
+id, name, cal, p, c, f, source, search_count, created_at
+```
+Must be created manually via SQL Editor in Supabase dashboard if not exists.
 
 ---
 
@@ -364,20 +395,28 @@ Stack Navigator (_layout.tsx)
 ### 4. Data Flow — Logging a Meal
 
 ```
-User taps "Add meal" on macros.tsx
+User types food name in macros.tsx search bar
     │
-    ▼
-Picks food from SAMPLE_MEALS (constants/data.ts)
+    ▼ (debounced 500ms)
+searchFood(query) → utils/foodSearch.ts
     │
-    ▼
-Calls addMeal(meal) → useAppStore
-    │
-    ▼
-Store updates todayMeals[]
-    │
-    ▼
-index.tsx re-renders automatically
-(calorie ring + macro bars update live)
+    ├─ Supabase foods table (cached results)
+    └─ Edge Function → Claude AI (if not cached)
+            │
+            ▼
+    Results shown as list (source: Guardado / Estimado por IA)
+            │
+    User taps result
+            │
+            ▼
+    addMeal(meal) → useAppStore
+            │
+            ▼
+    Store updates todayMeals[]
+            │
+            ▼
+    index.tsx re-renders automatically
+    (calorie ring + macro bars update live)
 ```
 
 ---
