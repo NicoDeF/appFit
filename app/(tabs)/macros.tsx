@@ -12,7 +12,7 @@ import { useT } from '@/constants/i18n';
 type SearchStatus = 'idle' | 'searching' | 'ai' | 'done' | 'error';
 
 export default function MacrosScreen() {
-  const { profile, trainingType, todayMeals, setTrainingType, addMeal, removeMeal } = useAppStore();
+  const { profile, weeklyPlan, todayMeals, addMeal, removeMeal } = useAppStore();
   const t = useT();
 
   const [showCustom, setShowCustom] = useState(false);
@@ -24,7 +24,17 @@ export default function MacrosScreen() {
   const [status, setStatus] = useState<SearchStatus>('idle');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const training = TRAINING_TYPES.find((tr) => tr.id === trainingType)!;
+  // Derive today's training from the weekly plan (highest calMod wins)
+  const todayIndex = (new Date().getDay() + 6) % 7;
+  const todayActivities = weeklyPlan?.[todayIndex]?.activities ?? [{ type: 'rest' }];
+  const REST = TRAINING_TYPES.find((t) => t.id === 'rest')!;
+  const training = todayActivities
+    .map((a) => TRAINING_TYPES.find((t) => t.id === a.type) ?? REST)
+    .reduce((best, t) => t.calMod > best.calMod ? t : best, REST);
+  const todayTrainingLabel = todayActivities
+    .map((a) => a.type === 'custom' ? (a.label || 'Personalizado') : (TRAINING_TYPES.find((t) => t.id === a.type)?.label ?? a.type))
+    .join(' · ');
+
   const { adjustedTdee, protein, fat, carbs } = calcMacros(
     profile.tdee,
     profile.weight,
@@ -119,31 +129,34 @@ export default function MacrosScreen() {
         <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 2 }}>{t.macros.subtitle}</Text>
       </View>
 
-      {/* Day type selector */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 8 }}
-      >
-        {TRAINING_TYPES.map((tr) => (
-          <TouchableOpacity
-            key={tr.id}
-            onPress={() => setTrainingType(tr.id)}
-            style={{
-              paddingVertical: 9,
-              paddingHorizontal: 16,
-              borderRadius: 12,
-              borderWidth: 1.5,
-              borderColor: trainingType === tr.id ? colors.accent : colors.border,
-              backgroundColor: trainingType === tr.id ? colors.accentSoft : colors.card,
-            }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: trainingType === tr.id ? colors.accent : colors.textMuted }}>
-              {tr.emoji} {t.trainingType[tr.id as keyof typeof t.trainingType]}
+      {/* Today's training badge — derived from weekly plan */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 }}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          backgroundColor: colors.card, borderRadius: 16,
+          borderWidth: 1, borderColor: colors.border,
+          paddingVertical: 12, paddingHorizontal: 16,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: colors.textDim }}>
+                Entrenamiento hoy
+              </Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+                {todayTrainingLabel}
+              </Text>
+            </View>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 2 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: colors.textDim }}>
+              Objetivo ajustado
             </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.accent }}>
+              {adjustedTdee} kcal
+            </Text>
+          </View>
+        </View>
+      </View>
 
       {/* Calorie hero */}
       <View style={{ marginHorizontal: 16, backgroundColor: colors.card, borderRadius: 22, borderWidth: 1, borderColor: colors.border, padding: 24, alignItems: 'center', gap: 6 }}>

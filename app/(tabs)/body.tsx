@@ -72,7 +72,7 @@ export default function BodyScreen() {
 
   const stats = [
     { label: t.body.statWeight, value: `${dispWeight.value}`, unit: dispWeight.unit, delta: weightDelta, color: colors.text },
-    { label: t.body.statBF, value: `~${latestBody.bf}`, unit: '%', delta: latestBody.bf - firstBody.bf, color: colors.blue },
+    { label: t.body.statBF, value: `~${latestBody.bf.toFixed(2)}`, unit: '%', delta: +( latestBody.bf - firstBody.bf).toFixed(2), color: colors.blue },
     { label: t.body.statWaist, value: `${dispWaist.value}`, unit: dispWaist.unit, delta: waistDelta, color: colors.yellow },
   ];
 
@@ -264,7 +264,7 @@ export default function BodyScreen() {
             >
               <Text style={{ flex: 2, fontSize: 13, color: colors.textMuted }}>{e.date}</Text>
               <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.text, textAlign: 'center' }}>{dw.value}</Text>
-              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.blue, textAlign: 'center' }}>{e.bf}%</Text>
+              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.blue, textAlign: 'center' }}>{Number(e.bf).toFixed(2)}%</Text>
               <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.yellow, textAlign: 'right' }}>{dl.value}</Text>
             </View>
           );

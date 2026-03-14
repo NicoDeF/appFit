@@ -1,14 +1,16 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_PROFILE, SAMPLE_BODY_LOG, WEEKLY_PLAN } from '@/constants/data';
+import { DEFAULT_PROFILE, WEEKLY_PLAN } from '@/constants/data';
 import { Gender, ActivityLevel } from '@/utils/helpers';
 import { UnitSystem } from '@/utils/units';
+import { syncProfile, syncWeeklyPlan, syncBodyEntry } from '@/utils/userSync';
 
 export type Goal = 'cut' | 'bulk' | 'recomp';
 export type Language = 'es' | 'en';
 
 export interface User {
+  id: string;
   name: string;
   email: string;
 }
@@ -44,9 +46,14 @@ export interface BodyEntry {
   waist: number;
 }
 
+export interface DayActivity {
+  type: string;
+  label?: string; // solo para type === 'custom'
+}
+
 export interface WeekDay {
   day: string;
-  type: string;
+  activities: DayActivity[];
 }
 
 interface AppState {
@@ -78,14 +85,22 @@ interface AppState {
   clearTodayMeals: () => void;
   resetMealsIfNewDay: () => void;
   addBodyEntry: (entry: BodyEntry) => void;
+  setBodyLog: (entries: BodyEntry[]) => void;
   updateWeeklyPlan: (plan: WeekDay[]) => void;
   setLanguage: (lang: Language) => void;
   setUnitSystem: (system: UnitSystem) => void;
+  hydrateUserData: (data: {
+    profile?: Partial<Profile>;
+    weeklyPlan?: WeekDay[];
+    bodyLog?: BodyEntry[];
+    unitSystem?: UnitSystem;
+    language?: Language;
+  }) => void;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isLoggedIn: false,
       user: null,
       hasCompletedOnboarding: false,
@@ -94,7 +109,7 @@ export const useAppStore = create<AppState>()(
       trainingType: 'rest',
       todayMeals: [],
       lastMealDate: '',
-      bodyLog: SAMPLE_BODY_LOG,
+      bodyLog: [],
       weeklyPlan: WEEKLY_PLAN,
       language: 'es' as Language,
       unitSystem: 'metric' as UnitSystem,
@@ -104,19 +119,18 @@ export const useAppStore = create<AppState>()(
         isLoggedIn: false,
         user: null,
         isPremium: false,
-        todayMeals: [],
-        lastMealDate: '',
-        profile: DEFAULT_PROFILE,
-        bodyLog: SAMPLE_BODY_LOG,
-        weeklyPlan: WEEKLY_PLAN,
-        trainingType: 'rest',
       }),
 
       completeOnboarding: () => set({ hasCompletedOnboarding: true }),
       setPremium: (value) => set({ isPremium: value }),
 
-      updateProfile: (updates) =>
-        set((state) => ({ profile: { ...state.profile, ...updates } })),
+      updateProfile: (updates) => {
+        set((state) => ({ profile: { ...state.profile, ...updates } }));
+        const { user, profile, unitSystem, language } = get();
+        if (user?.id) {
+          syncProfile(user.id, { ...profile, ...updates }, unitSystem, language).catch(() => {});
+        }
+      },
 
       setTrainingType: (type) => set({ trainingType: type }),
 
@@ -142,20 +156,57 @@ export const useAppStore = create<AppState>()(
         });
       },
 
-      addBodyEntry: (entry) =>
-        set((state) => ({ bodyLog: [...state.bodyLog, entry] })),
+      addBodyEntry: (entry) => {
+        set((state) => ({ bodyLog: [...state.bodyLog, entry] }));
+        const { user } = get();
+        if (user?.id) {
+          syncBodyEntry(user.id, entry).catch(() => {});
+        }
+      },
 
-      updateWeeklyPlan: (plan) => set({ weeklyPlan: plan }),
-      setLanguage: (lang) => set({ language: lang }),
-      setUnitSystem: (system) => set({ unitSystem: system }),
+      setBodyLog: (entries) => set({ bodyLog: entries }),
+
+      updateWeeklyPlan: (plan) => {
+        set({ weeklyPlan: plan });
+        const { user } = get();
+        if (user?.id) {
+          syncWeeklyPlan(user.id, plan).catch(() => {});
+        }
+      },
+
+      setLanguage: (lang) => {
+        set({ language: lang });
+        const { user, profile, unitSystem } = get();
+        if (user?.id) {
+          syncProfile(user.id, profile, unitSystem, lang).catch(() => {});
+        }
+      },
+
+      setUnitSystem: (system) => {
+        set({ unitSystem: system });
+        const { user, profile, language } = get();
+        if (user?.id) {
+          syncProfile(user.id, profile, system, language).catch(() => {});
+        }
+      },
+
+      hydrateUserData: ({ profile, weeklyPlan, bodyLog, unitSystem, language }) => {
+        set((state) => ({
+          ...(profile ? { profile: { ...state.profile, ...profile } } : {}),
+          ...(weeklyPlan ? { weeklyPlan } : {}),
+          ...(bodyLog && bodyLog.length > 0 ? { bodyLog } : {}),
+          ...(unitSystem ? { unitSystem } : {}),
+          ...(language ? { language } : {}),
+        }));
+      },
     }),
     {
       name: 'appfit-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 7,
+      version: 9,
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
-          persisted.isLoggedIn = persisted.isLoggedIn ?? true; // keep existing users logged in
+          persisted.isLoggedIn = persisted.isLoggedIn ?? true;
           persisted.user = persisted.user ?? null;
           persisted.hasCompletedOnboarding = persisted.hasCompletedOnboarding ?? true;
           persisted.weeklyPlan = persisted.weeklyPlan ?? WEEKLY_PLAN;
@@ -168,7 +219,6 @@ export const useAppStore = create<AppState>()(
           };
         }
         if (version < 4) {
-          // Fix: logout used to reset hasCompletedOnboarding — restore it for existing users
           persisted.hasCompletedOnboarding = true;
         }
         if (version < 5) {
@@ -179,6 +229,21 @@ export const useAppStore = create<AppState>()(
         }
         if (version < 7) {
           persisted.unitSystem = persisted.unitSystem ?? 'metric';
+        }
+        if (version < 8) {
+          persisted.bodyLog = persisted.bodyLog ?? [];
+        }
+        if (version < 9) {
+          // Migrate weeklyPlan from { day, type, label? } to { day, activities: [{type, label?}] }
+          if (Array.isArray(persisted.weeklyPlan)) {
+            persisted.weeklyPlan = persisted.weeklyPlan.map((entry: any) => {
+              if (entry.activities) return entry;
+              return {
+                day: entry.day,
+                activities: [{ type: entry.type ?? 'rest', ...(entry.label ? { label: entry.label } : {}) }],
+              };
+            });
+          }
         }
         return persisted;
       },

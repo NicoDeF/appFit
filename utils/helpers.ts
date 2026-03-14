@@ -45,7 +45,7 @@ export const estimateBF = (
 ): number => {
   const bmi = weight / Math.pow(height / 100, 2);
   const bf = 1.2 * bmi + 0.23 * age - 10.8 * (gender === 'male' ? 1 : 0) - 5.4;
-  return Math.max(5, Math.round(bf * 10) / 10);
+  return +Math.max(5, Math.round(bf * 100) / 100).toFixed(2);
 };
 
 // Calorie target based on goal

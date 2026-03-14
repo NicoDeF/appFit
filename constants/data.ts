@@ -1,19 +1,38 @@
+export type TrainingCategory = 'gym' | 'sport' | 'cardio' | 'other' | 'rest' | 'custom';
+
 export const TRAINING_TYPES = [
-  { id: 'upper', label: 'Upper Body', emoji: '💪', carbMod: 1.0, calMod: 1.0 },
-  { id: 'lower', label: 'Lower Body', emoji: '🦵', carbMod: 1.15, calMod: 1.05 },
-  { id: 'football', label: 'Football', emoji: '⚽', carbMod: 1.25, calMod: 1.15 },
-  { id: 'cardio', label: 'Cardio', emoji: '🏃', carbMod: 0.9, calMod: 1.0 },
-  { id: 'rest', label: 'Rest', emoji: '😴', carbMod: 0.7, calMod: 0.85 },
+  // Gym — splits
+  { id: 'push',     label: 'Push',           category: 'gym'    as TrainingCategory, calMod: 1.0,  carbMod: 1.0  },
+  { id: 'pull',     label: 'Pull',           category: 'gym'    as TrainingCategory, calMod: 1.0,  carbMod: 1.0  },
+  { id: 'legs',     label: 'Piernas',        category: 'gym'    as TrainingCategory, calMod: 1.05, carbMod: 1.15 },
+  { id: 'upper',    label: 'Tren Superior',  category: 'gym'    as TrainingCategory, calMod: 1.0,  carbMod: 1.0  },
+  { id: 'lower',    label: 'Tren Inferior',  category: 'gym'    as TrainingCategory, calMod: 1.05, carbMod: 1.1  },
+  { id: 'fullbody', label: 'Full Body',      category: 'gym'    as TrainingCategory, calMod: 1.05, carbMod: 1.1  },
+  // Sport
+  { id: 'football',   label: 'Fútbol',      category: 'sport'  as TrainingCategory, calMod: 1.15, carbMod: 1.25 },
+  { id: 'basketball', label: 'Basketball',  category: 'sport'  as TrainingCategory, calMod: 1.1,  carbMod: 1.2  },
+  { id: 'tennis',     label: 'Tenis',       category: 'sport'  as TrainingCategory, calMod: 1.1,  carbMod: 1.15 },
+  { id: 'boxing',     label: 'Boxeo',       category: 'sport'  as TrainingCategory, calMod: 1.15, carbMod: 1.15 },
+  // Cardio
+  { id: 'running',  label: 'Running',       category: 'cardio' as TrainingCategory, calMod: 1.05, carbMod: 0.95 },
+  { id: 'cycling',  label: 'Ciclismo',      category: 'cardio' as TrainingCategory, calMod: 1.05, carbMod: 0.95 },
+  { id: 'swimming', label: 'Natación',      category: 'cardio' as TrainingCategory, calMod: 1.1,  carbMod: 1.0  },
+  { id: 'hiit',     label: 'HIIT',          category: 'cardio' as TrainingCategory, calMod: 1.1,  carbMod: 1.0  },
+  { id: 'cardio',   label: 'Cardio',        category: 'cardio' as TrainingCategory, calMod: 1.0,  carbMod: 0.9  },
+  // Otro
+  { id: 'yoga',     label: 'Yoga / Movilidad', category: 'other' as TrainingCategory, calMod: 0.9, carbMod: 0.9 },
+  { id: 'rest',     label: 'Descanso',      category: 'rest'   as TrainingCategory, calMod: 0.85, carbMod: 0.7  },
+  { id: 'custom',   label: 'Personalizado', category: 'custom' as TrainingCategory, calMod: 1.0,  carbMod: 1.0  },
 ];
 
 export const WEEKLY_PLAN = [
-  { day: 'Monday', type: 'upper' },
-  { day: 'Tuesday', type: 'lower' },
-  { day: 'Wednesday', type: 'football' },
-  { day: 'Thursday', type: 'upper' },
-  { day: 'Friday', type: 'lower' },
-  { day: 'Saturday', type: 'football' },
-  { day: 'Sunday', type: 'rest' },
+  { day: 'Monday',    activities: [{ type: 'upper' }] },
+  { day: 'Tuesday',   activities: [{ type: 'lower' }] },
+  { day: 'Wednesday', activities: [{ type: 'football' }] },
+  { day: 'Thursday',  activities: [{ type: 'upper' }] },
+  { day: 'Friday',    activities: [{ type: 'lower' }] },
+  { day: 'Saturday',  activities: [{ type: 'football' }] },
+  { day: 'Sunday',    activities: [{ type: 'rest' }] },
 ];
 
 
@@ -31,11 +50,3 @@ export const DEFAULT_PROFILE = {
   targetBf: 15,
   proteinPerKg: 2.2,
 };
-
-export const SAMPLE_BODY_LOG = [
-  { date: '2025-02-01', weight: 89.2, bf: 19.5, waist: 88 },
-  { date: '2025-02-15', weight: 88.8, bf: 19.0, waist: 87 },
-  { date: '2025-03-01', weight: 88.3, bf: 18.5, waist: 86.5 },
-  { date: '2025-03-15', weight: 87.9, bf: 18.2, waist: 86 },
-  { date: '2025-04-01', weight: 87.5, bf: 18.0, waist: 85.5 },
-];

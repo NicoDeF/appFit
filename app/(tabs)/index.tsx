@@ -54,14 +54,23 @@ function CalorieRing({ consumed, target, labelLeft, labelEaten, labelTarget, lab
 }
 
 export default function DashboardScreen() {
-  const { profile, trainingType, todayMeals, bodyLog, user, language } = useAppStore();
+  const { profile, weeklyPlan, todayMeals, bodyLog, user, language } = useAppStore();
   const t = useT();
   const units = useUnits();
 
   const DAYS = language === 'es' ? DAYS_ES : DAYS_EN;
   const MONTHS = language === 'es' ? MONTHS_ES : MONTHS_EN;
 
-  const training = TRAINING_TYPES.find((tr) => tr.id === trainingType)!;
+  const todayIndex = (new Date().getDay() + 6) % 7;
+  const todayActivities = weeklyPlan?.[todayIndex]?.activities ?? [{ type: 'rest' }];
+  const REST = TRAINING_TYPES.find((t) => t.id === 'rest')!;
+  const training = todayActivities
+    .map((a) => TRAINING_TYPES.find((t) => t.id === a.type) ?? REST)
+    .reduce((best, t) => t.calMod > best.calMod ? t : best, REST);
+  const todayTrainingLabel = todayActivities
+    .map((a) => a.type === 'custom' ? (a.label || 'Personalizado') : (TRAINING_TYPES.find((t) => t.id === a.type)?.label ?? a.type))
+    .join(' · ');
+
   const { adjustedTdee, protein, fat, carbs } = calcMacros(
     profile.tdee,
     profile.weight,
@@ -112,7 +121,7 @@ export default function DashboardScreen() {
           <Text style={{ fontSize: 12, color: colors.textMuted }}>{dateStr}</Text>
           <View style={{ marginTop: 6, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.accentSoft, borderRadius: 8 }}>
             <Text style={{ fontSize: 12, color: colors.accent, fontWeight: '700' }}>
-              {training.emoji} {t.trainingType[training.id as keyof typeof t.trainingType]}
+              {todayTrainingLabel}
             </Text>
           </View>
         </View>
@@ -178,14 +187,14 @@ export default function DashboardScreen() {
           <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, marginTop: 8 }}>
             {dispWeight.value}<Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: '500' }}> {dispWeight.unit}</Text>
           </Text>
-          <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>Goal: {dispTargetWeight.value} {dispTargetWeight.unit}</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>Meta: {dispTargetWeight.value} {dispTargetWeight.unit}</Text>
         </View>
         <View style={{ flex: 1, backgroundColor: colors.card, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 18 }}>
           <Text style={{ fontSize: 10, color: colors.textMuted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>{t.body.statBF}</Text>
           <Text style={{ fontSize: 28, fontWeight: '800', color: colors.blue, marginTop: 8 }}>
-            ~{latestBody.bf}<Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: '500' }}> %</Text>
+            ~{latestBody.bf.toFixed(2)}<Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: '500' }}> %</Text>
           </Text>
-          <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>Estimated</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>Estimado</Text>
         </View>
       </View>
 
@@ -195,8 +204,8 @@ export default function DashboardScreen() {
           {t.home.recompProgress}
         </Text>
         {[
-          { label: 'Weight', from: units.displayWeight(firstBody.weight).value, to: units.displayWeight(profile.targetWeight).value, current: dispWeight.value, unit: units.weightUnit, color: colors.accent },
-          { label: 'Body Fat', from: firstBody.bf, to: profile.targetBf, current: latestBody.bf, unit: '%', color: colors.blue },
+          { label: 'Peso', from: units.displayWeight(firstBody.weight).value, to: units.displayWeight(profile.targetWeight).value, current: dispWeight.value, unit: units.weightUnit, color: colors.accent },
+          { label: 'Grasa Corp.', from: +firstBody.bf.toFixed(2), to: +profile.targetBf.toFixed(2), current: +latestBody.bf.toFixed(2), unit: '%', color: colors.blue },
         ].map(({ label, from, to, current, unit, color }) => (
           <View key={label} style={{ gap: 8 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

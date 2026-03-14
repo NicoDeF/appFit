@@ -414,7 +414,7 @@ export default function OnboardingScreen() {
       targetWeight: Number(form.targetWeight) || weight,
       tdee: calorieTarget,
       bodyFat: bf,
-      targetBf: Math.max(8, bf - 5),
+      targetBf: +Math.max(8, bf - 5).toFixed(2),
       proteinPerKg,
     });
     updateWeeklyPlan(weekPlan);

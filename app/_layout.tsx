@@ -8,6 +8,7 @@ import { colors } from '@/constants/Colors';
 import { useAppStore } from '@/store/useAppStore';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/utils/supabase';
+import { loadUserData } from '@/utils/userSync';
 
 SplashScreen.preventAutoHideAsync();
 WebBrowser.maybeCompleteAuthSession();
@@ -21,7 +22,7 @@ export const unstable_settings = {
 const AUTH_SCREENS = ['welcome', 'login', 'register', 'forgot-password'];
 
 export default function RootLayout() {
-  const { isLoggedIn, hasCompletedOnboarding, login, logout, resetMealsIfNewDay } = useAppStore();
+  const { isLoggedIn, hasCompletedOnboarding, login, logout, resetMealsIfNewDay, hydrateUserData } = useAppStore();
   const router = useRouter();
   const segments = useSegments();
   const [hydrated, setHydrated] = useState(false);
@@ -55,32 +56,37 @@ export default function RootLayout() {
 
   // Sync Supabase session → Zustand store
   useEffect(() => {
+    const hydrateUser = async (supabaseUser: any) => {
+      login({
+        id: supabaseUser.id,
+        name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email?.split('@')[0] ?? 'User',
+        email: supabaseUser.email!,
+      });
+      // Load user data from Supabase and merge into store
+      loadUserData(supabaseUser.id).then(({ profile, weeklyPlan, bodyLog }) => {
+        hydrateUserData({
+          profile: profile ?? undefined,
+          weeklyPlan: weeklyPlan ?? undefined,
+          bodyLog: bodyLog.length > 0 ? bodyLog : undefined,
+          unitSystem: profile?.unitSystem ?? undefined,
+          language: profile?.language ?? undefined,
+        });
+      }).catch(() => {});
+    };
+
     // Restore existing session on app launch
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        const u = session.user;
-        login({
-          name: u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User',
-          email: u.email!,
-        });
+        hydrateUser(session.user);
       }
-      // Mark hydration done — guard may now run
       setHydrated(true);
-      // No explicit signOut on error — Supabase emits SIGNED_OUT automatically
-      // for invalid tokens, and calling signOut() here clears the PKCE code
-      // verifier needed for in-flight OAuth exchanges (causes Android OAuth loop).
     });
 
     // Listen for future auth changes (sign in / sign out)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        const u = session.user;
-        login({
-          name: u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User',
-          email: u.email!,
-        });
+      if (session?.user && event === 'SIGNED_IN') {
+        hydrateUser(session.user);
       } else if (event === 'SIGNED_OUT') {
-        // Only logout on explicit sign-out, not on INITIAL_SESSION with no session
         logout();
       }
     });

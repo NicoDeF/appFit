@@ -12,7 +12,8 @@
       "Bash(expo run:android:*)",
       "Skill(claude-api)",
       "mcp__figma__generate_figma_design",
-      "Bash(sleep 12 && curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8081/ 2>&1)"
+      "Bash(sleep 12 && curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8081/ 2>&1)",
+      "mcp__mobile-mcp__mobile_save_screenshot"
     ]
   },
   "enableAllProjectMcpServers": true,
