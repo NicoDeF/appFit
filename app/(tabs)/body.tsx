@@ -9,16 +9,16 @@ import { useT } from '@/constants/i18n';
 import { useUnits } from '@/utils/units';
 
 export default function BodyScreen() {
-  const { bodyLog, addBodyEntry } = useAppStore();
+  const { bodyLog, addBodyEntry, profile } = useAppStore();
   const t = useT();
   const units = useUnits();
 
   const [weightInput, setWeightInput] = useState('');
   const [waistInput, setWaistInput] = useState('');
   const [activeLog, setActiveLog] = useState<'weight' | 'waist' | null>(null);
-
-  const latestBody = bodyLog[bodyLog.length - 1];
-  const firstBody = bodyLog[0];
+  const defaultBody = { weight: profile.weight, bf: profile.bodyFat, waist: 0, date: '' };
+  const latestBody = bodyLog[bodyLog.length - 1] ?? defaultBody;
+  const firstBody = bodyLog[0] ?? defaultBody;
 
   const leanMass = formatNum(latestBody.weight * (1 - latestBody.bf / 100));
   const fatMass = formatNum(latestBody.weight * (latestBody.bf / 100));

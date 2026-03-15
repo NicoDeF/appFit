@@ -22,7 +22,7 @@ export const unstable_settings = {
 const AUTH_SCREENS = ['welcome', 'login', 'register', 'forgot-password'];
 
 export default function RootLayout() {
-  const { isLoggedIn, hasCompletedOnboarding, login, logout, resetMealsIfNewDay, hydrateUserData } = useAppStore();
+  const { isLoggedIn, hasCompletedOnboarding, login, logout, completeOnboarding, resetMealsIfNewDay, hydrateUserData } = useAppStore();
   const router = useRouter();
   const segments = useSegments();
   const [hydrated, setHydrated] = useState(false);
@@ -62,6 +62,8 @@ export default function RootLayout() {
         name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email?.split('@')[0] ?? 'User',
         email: supabaseUser.email!,
       });
+      // If user has a Supabase session they already registered — mark onboarding complete
+      completeOnboarding();
       // Load user data from Supabase and merge into store
       loadUserData(supabaseUser.id).then(({ profile, weeklyPlan, bodyLog }) => {
         hydrateUserData({
@@ -75,8 +77,12 @@ export default function RootLayout() {
     };
 
     // Restore existing session on app launch
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Invalid/expired refresh token — clear synchronously before hydrating
+        logout();
+        supabase.auth.signOut().catch(() => {});
+      } else if (session?.user) {
         hydrateUser(session.user);
       }
       setHydrated(true);
@@ -88,6 +94,9 @@ export default function RootLayout() {
         hydrateUser(session.user);
       } else if (event === 'SIGNED_OUT') {
         logout();
+      } else if (event as string === 'TOKEN_REFRESH_FAILED') {
+        logout();
+        supabase.auth.signOut().catch(() => {});
       }
     });
 

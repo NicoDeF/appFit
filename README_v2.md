@@ -1,215 +1,242 @@
-# appFIT — Mobile Automation with MCP
+# appFIT
 
-## Overview
-
-appFIT is a React Native / Expo fitness tracker for the **Spanish-speaking market**, fully automatable via [mobile-mcp](https://github.com/mobile-next/mobile-mcp) — a Model Context Protocol server that enables AI agents to interact with the app on Android emulators, iOS simulators, and real devices through a unified interface.
-
-This document covers both the app itself and how to drive it programmatically using Claude + mobile-mcp.
+Fitness tracker para el **mercado hispanohablante** construido con React Native + Expo.
+Orientado a México, Argentina, Colombia y España — UI y base de datos de alimentos 100% en español.
 
 ---
 
-## What mobile-mcp enables on appFIT
+## ¿Qué hace la app?
 
-AI agents can automate full user journeys inside appFIT without writing a single test script:
+appFIT ayuda al usuario a alcanzar sus objetivos físicos a través de cuatro pilares:
 
-- **Navigate** through Welcome → Login → Onboarding → Home → any tab
-- **Log meals** — search "arroz", "tacos", "empanada" and add them with one tap
-- **Register body entries** — weight and body fat via the Cuerpo tab
-- **Inspect UI state** — read calorie rings, macro bars, weekly planner values
-- **Take screenshots** — capture any screen for QA, documentation, or Figma upload
-- **Validate flows** — verify that the paywall blocks premium features correctly
+1. **Nutrición** — registra comidas, calcula calorías y macros del día en tiempo real
+2. **Cuerpo** — lleva un historial de peso y grasa corporal con gráficos de evolución
+3. **Planificación** — asigna tipos de entrenamiento a cada día de la semana
+4. **Perfil** — calcula TDEE, objetivo calórico, proteína por kg y porcentaje de grasa estimado
 
----
-
-## Core App Capabilities
-
-- **Calorie & macro tracking** — log meals from a Spanish/Latin food database (tacos, arepa, empanada, etc.)
-- **Body log** — track weight and body fat over time with SVG charts
-- **Weekly planner** — assign training types (Fútbol, Gym, Yoga, Rest…) per day
-- **AI macro estimator** — describe a food in plain Spanish → Claude returns estimated macros
-- **Freemium paywall** — monthly ($6.99) and annual ($39.99) plans with 7-day free trial
-- **Profile & goals** — TDEE calculation, protein targets, activity level, body fat estimation
+El modelo de negocio es **freemium**: funciones básicas gratis + suscripción Pro con funciones avanzadas (escáner de alimentos con IA, coaching personalizado).
 
 ---
 
 ## Tech Stack
 
-| Package | Purpose |
-|---|---|
-| `expo` ~52 | Framework + build tooling |
-| `expo-router` | File-based navigation (Stack + Tabs) |
-| `react-native` | Core mobile UI |
-| `typescript` | Language |
-| `zustand` | Global state management |
-| `@react-native-async-storage/async-storage` | Persisting store to device |
-| `react-native-svg` | Calorie ring, macro rings, weight chart |
-| `supabase` | Backend + Edge Functions |
-| `@mobilenext/mobile-mcp` | AI-driven mobile automation |
+| Paquete                                     | Uso                                                    |
+| ------------------------------------------- | ------------------------------------------------------ |
+| `expo` ~52                                  | Framework + build tooling                              |
+| `expo-router`                               | Navegación file-based (Stack + Tabs)                   |
+| `react-native`                              | UI mobile nativa                                       |
+| `typescript`                                | Lenguaje                                               |
+| `zustand`                                   | Estado global                                          |
+| `@react-native-async-storage/async-storage` | Persistencia local del store                           |
+| `react-native-svg`                          | Gráficos SVG (calorie ring, macro rings, weight chart) |
+| `supabase`                                  | Backend, Auth y Edge Functions                         |
 
 ---
 
-## Project Structure
+## Arquitectura
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Expo Router                      │
+│  Stack: welcome → login → onboarding → (tabs)       │
+│         paywall (modal)                             │
+└────────────────────┬────────────────────────────────┘
+                     │
+          ┌──────────▼──────────┐
+          │   Zustand Store     │
+          │  useAppStore.ts     │
+          │                     │
+          │  auth / profile     │
+          │  todayMeals         │
+          │  bodyLog            │
+          │  weeklyPlan         │
+          │  isPremium          │
+          └──────────┬──────────┘
+                     │
+       ┌─────────────┼─────────────┐
+       │             │             │
+  ┌────▼────┐  ┌─────▼────┐  ┌────▼────────┐
+  │ helpers │  │ Supabase │  │  constants  │
+  │ calcTDEE│  │  Auth    │  │  Colors.ts  │
+  │calcMacros  │  Sync    │  │  data.ts    │
+  │estimateBF  │  Edge Fn │  │  i18n.ts    │
+  └─────────┘  └──────────┘  └─────────────┘
+```
+
+### Flujo de autenticación
+
+```
+App abre
+  │
+  ├── No logueado          →  /welcome
+  │
+  ├── Logueado, sin onboarding  →  /onboarding
+  │
+  └── Logueado + onboarding     →  /(tabs)
+```
+
+La guarda vive en `app/_layout.tsx`. Auth actualmente es mock; Supabase Auth está en el roadmap.
+
+---
+
+## Estructura del proyecto
 
 ```
 app/
-  _layout.tsx          # Root Stack navigator + auth guard
-  welcome.tsx          # Landing screen — "MÁS FUERTE. CADA DÍA."
-  login.tsx            # Auth
-  register.tsx         # Auth
-  onboarding.tsx       # Post-login onboarding flow (weight, height, goals)
-  paywall.tsx          # Subscription paywall (modal)
+  _layout.tsx          # Root Stack + auth guard
+  welcome.tsx          # Landing — "MÁS FUERTE. CADA DÍA."
+  login.tsx            # Login
+  register.tsx         # Registro
+  onboarding.tsx       # Configuración inicial (peso, altura, objetivo, actividad)
+  paywall.tsx          # Paywall modal — mensual $6.99 / anual $39.99
   (tabs)/
-    index.tsx          # Home — calorie ring, macros, body progress
-    macros.tsx         # Nutrición — log meals, search food, quick add
-    body.tsx           # Cuerpo — weight/BF log, charts, composition
-    planner.tsx        # Plan — weekly training calendar
-    profile.tsx        # Mis Datos — stats, goals, Pro banner
+    _layout.tsx        # Tab bar (6 tabs)
+    index.tsx          # Home — calorie ring, macros, progreso, gráfico de peso
+    macros.tsx         # Nutrición — buscar alimentos, log del día, añadir manual
+    body.tsx           # Cuerpo — log de peso/BF, gráfico, composición corporal
+    planner.tsx        # Plan — selector de día, tipo de entrenamiento por día
+    profile.tsx        # Mis Datos — estadísticas, metas, nivel de actividad, banner Pro
+
 constants/
-  Colors.ts            # Single source of truth for dark theme tokens
-  data.ts              # SAMPLE_MEALS (Spanish foods), TRAINING_TYPES, DEFAULT_PROFILE
+  Colors.ts            # Tokens de color del tema oscuro (única fuente de verdad)
+  data.ts              # SAMPLE_MEALS, TRAINING_TYPES, WEEKLY_PLAN, DEFAULT_PROFILE
+  i18n.ts              # Textos en español (internacionalización)
+
 components/ui/
-  MacroRing.tsx        # SVG donut for protein/carbs/fat
-  WeightChart.tsx      # SVG line chart for body log
-  MiniBar.tsx          # Horizontal progress bar
-  StatCard.tsx         # Stat card component
+  MacroRing.tsx        # Donut SVG para proteína / carbos / grasa
+  WeightChart.tsx      # Gráfico de línea SVG para evolución de peso
+  MiniBar.tsx          # Barra de progreso horizontal
+  StatCard.tsx         # Tarjeta de estadística
+  AppLogo.tsx          # Logo de la app
+
 utils/
-  helpers.ts           # calcTDEE, calcMacros, estimateBF, calcCalorieTarget
+  helpers.ts           # calcTDEE, calcMacros, estimateBF, calcCalorieTarget, calcProteinPerKg, pct
+  units.ts             # Conversión métrico ↔ imperial
+  userSync.ts          # Sincronización de datos con Supabase
+
 store/
-  useAppStore.ts       # Zustand store — auth, profile, meals, bodyLog, isPremium
+  useAppStore.ts       # Zustand store con persistencia AsyncStorage
+
 supabase/
+  migrations/          # Migraciones SQL
   functions/
-    estimate-macros/   # Edge Function — AI macro estimation via Claude
+    estimate-macros/   # Edge Function — descripción en español → macros via Claude
 ```
 
 ---
 
-## Getting Started
+## Estado global (Zustand)
 
-### Run the app
+```ts
+// Autenticación
+isLoggedIn: boolean
+user: User | null
+hasCompletedOnboarding: boolean
+isPremium: boolean
 
-```bash
-npm install
-npx expo start
-```
-
-Press `a` to open on Android emulator, `i` for iOS simulator, or scan the QR with Expo Go.
-
-### Enable mobile-mcp automation
-
-Add to your Claude Code / Claude Desktop MCP config:
-
-```json
-{
-  "mcpServers": {
-    "mobile-mcp": {
-      "command": "npx",
-      "args": ["-y", "@mobilenext/mobile-mcp@latest"]
-    }
-  }
+// Perfil
+profile: {
+  weight, height, age, gender
+  activityLevel, goal
+  tdee, bodyFat, targetBf, targetWeight
+  proteinPerKg
 }
+
+// Nutrición
+todayMeals: Meal[]       // se resetea automáticamente a medianoche
+lastMealDate: string
+
+// Cuerpo
+bodyLog: BodyEntry[]     // { date, weight, bf, waist }
+
+// Planificación
+weeklyPlan: WeeklyEntry[]  // { day, activities: [{ type, label }] }
+
+// Preferencias
+language: 'es'
+unitSystem: 'metric' | 'imperial'
 ```
 
 ---
 
-## Automation Examples
+## Cálculos principales
 
-Once mobile-mcp is connected and the emulator is running, Claude can execute natural language instructions against the live app.
-
-### List available devices
-```
-mobile_list_available_devices
-→ emulator-5554 | Medium Phone API 36 | Android 16 | online
-```
-
-### Take a screenshot
-```
-mobile_take_screenshot(device: "emulator-5554")
-→ Returns PNG of current screen (Welcome, Home, Nutrición, etc.)
-```
-
-### Navigate to Nutrición and log a meal
-```
-1. mobile_list_elements_on_screen     → find "Nutrición" tab at (270, 2305)
-2. mobile_click_on_screen_at_coordinates(270, 2305)
-3. mobile_swipe_on_screen(direction: "up")
-4. mobile_click_on_screen_at_coordinates(353, 1183)  → focus search field
-5. mobile_type_keys(text: "arroz")
-   → Result: "arroz blanco cocido · 130 kcal · Estimado por IA"
-```
-
-### Inspect calorie ring state
-```
-mobile_list_elements_on_screen
-→ "2990"  (kcal restantes)
-→ "0"     (consumido)
-→ "2990"  (objetivo)
-```
-
-### Press hardware back button
-```
-mobile_press_button(button: "BACK")
-```
+| Función             | Fórmula                                                   | Resultado                         |
+| ------------------- | --------------------------------------------------------- | --------------------------------- |
+| `calcTDEE`          | Mifflin-St Jeor × factor actividad                        | Calorías de mantenimiento         |
+| `calcMacros`        | Distribución por objetivo (pérdida/mantenimiento/volumen) | Proteína, carbos, grasa en gramos |
+| `estimateBF`        | Deurenberg BMI-based                                      | % grasa corporal estimado         |
+| `calcCalorieTarget` | TDEE ± déficit/superávit                                  | Objetivo calórico diario          |
+| `calcProteinPerKg`  | 1.6–2.2g/kg según objetivo                                | Proteína objetivo                 |
 
 ---
 
-## Screen Map
+## Pantallas
 
-| Screen | Route | Key elements |
-|---|---|---|
-| Welcome | `/welcome` | "MÁS FUERTE. CADA DÍA.", Comenzar, Iniciar sesión |
-| Login | `/login` | Email + password fields |
-| Onboarding | `/onboarding` | Weight, height, age, gender, goal, activity |
-| Home | `/(tabs)/index` | Calorie ring, macros, body stats, progress bars, weight chart |
-| Nutrición | `/(tabs)/macros` | Food search, meal list, macro rings, quick add |
-| Cuerpo | `/(tabs)/body` | Weight/BF log, SVG chart, composition breakdown |
-| Plan | `/(tabs)/planner` | Day selector, training type per day |
-| Mis Datos | `/(tabs)/profile` | Profile stats, goals, Pro banner |
-| Paywall | `/paywall` | Monthly $6.99 / Annual $39.99, 7-day trial |
-
----
-
-## Auth Flow
-
-```
-Not logged in     →  /welcome
-Logged in         →  /onboarding  (if not completed)
-Logged in + done  →  /(tabs)
-```
-
-Auth is currently mock — `login(user)` sets `isLoggedIn: true` with no backend call.
-Supabase Auth integration is in the roadmap.
+| Pantalla   | Ruta              | Descripción                                         |
+| ---------- | ----------------- | --------------------------------------------------- |
+| Welcome    | `/welcome`        | Landing con CTA "Comenzar" e "Iniciar sesión"       |
+| Login      | `/login`          | Formulario de acceso                                |
+| Registro   | `/register`       | Crear cuenta                                        |
+| Onboarding | `/onboarding`     | Datos personales + objetivo + plan semanal          |
+| Home       | `/(tabs)/index`   | Resumen del día: calorías, macros, cuerpo, progreso |
+| Nutrición  | `/(tabs)/macros`  | Log de comidas, buscador, añadir manualmente        |
+| Cuerpo     | `/(tabs)/body`    | Historial de peso/BF, gráfico SVG, composición      |
+| Plan       | `/(tabs)/planner` | Calendario semanal de entrenamientos                |
+| Mis Datos  | `/(tabs)/profile` | Perfil completo, metas, banner Pro                  |
+| Paywall    | `/paywall`        | Planes de suscripción con trial de 7 días           |
 
 ---
 
-## Target Markets
+## Convenciones de UI
 
-Mexico · Argentina · Colombia · Spain
+- Tema **oscuro único** — nunca light theme
+- `paddingTop: 58` para safe area (sin SafeAreaView)
+- Colores siempre desde `colors.*` — nunca hex hardcodeado
+- `TouchableOpacity` para todos los taps
+- Border radius: 22 tarjetas · 16 botones · 14 elementos secundarios
+- Font weight: 800 títulos · 700 labels · 600 secundario · 500 cuerpo
 
-Food database and UI are fully in Spanish.
-App Store keywords: `contar calorias`, `dieta`, `bajar de peso`, `ayuno intermitente`
+---
+
+## Monetización
+
+| Plan    | Precio       | Trial         |
+| ------- | ------------ | ------------- |
+| Mensual | $6.99 / mes  | 7 días gratis |
+| Anual   | $39.99 / año | 7 días gratis |
+
+El flag `isPremium` en el store controla el acceso a funciones Pro.
+La integración real con RevenueCat (IAP) está en el roadmap.
 
 ---
 
 ## Roadmap
 
-- [ ] **RevenueCat** — real IAP (iOS + Android)
-- [ ] **Supabase Auth** — replace mock login
-- [ ] **AI food scanner** — camera → Claude Vision → auto-fill macros
-- [ ] **Barcode scanner** — Open Food Facts API
-- [ ] **Push notifications** — meal reminders, streak alerts
-- [ ] **Water tracker** — daily intake log
-- [ ] **Apple Health / Google Fit sync**
-- [ ] **Streak tracking** — consecutive days logged
+### P0 — Antes del lanzamiento
+
+- [ ] **RevenueCat** — pagos reales iOS + Android (reemplaza mock `setPremium`)
+- [ ] **Supabase Auth** — login/registro real
+- [ ] **Reset de comidas a medianoche** — `todayMeals` debe limpiarse automáticamente
+
+### P1 — Diferenciadores core
+
+- [ ] **Escáner de alimentos con IA** — cámara → Claude Vision → macros automáticos (Pro)
+- [ ] **Coaching personalizado con IA** — tips generados por Claude según perfil del usuario (Pro)
+- [ ] **Tracker de ayuno intermitente** — timer última/próxima comida con notificaciones
+
+### P2 — Crecimiento y retención
+
+- [ ] **Notificaciones push** — recordatorios de comidas, alertas de racha
+- [ ] **Tracker de agua** — registro de ingesta con objetivo diario
+- [ ] **Escáner de código de barras** — Open Food Facts API
+- [ ] **Racha de hábitos** — días consecutivos registrados
+- [ ] **App Store listing** — keywords: "contar calorias", "dieta", "bajar de peso", "ayuno intermitente"
+
+### P3 — Nice to have
+
+- [ ] **Exportar datos** — reporte CSV/PDF de progreso corporal
+- [ ] **Apple Health / Google Fit** sync
+- [ ] **Variantes regionales** — slang México vs España vs Argentina
 
 ---
-
-## Prerequisites for Automation
-
-- Android Studio + emulator **or** Xcode + simulator
-- Node.js v22+
-- Claude Code or Claude Desktop with MCP enabled
-- `npx expo start` running
-
----
-
-*Built for the Spanish-speaking fitness market. Powered by Expo + Claude.*

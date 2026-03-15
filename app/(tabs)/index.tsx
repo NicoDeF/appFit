@@ -84,8 +84,9 @@ export default function DashboardScreen() {
     { cal: 0, p: 0, c: 0, f: 0 }
   );
 
-  const latestBody = bodyLog[bodyLog.length - 1];
-  const firstBody = bodyLog[0];
+  const defaultBody = { weight: profile.weight, bf: profile.bodyFat, waist: 0, date: '' };
+  const latestBody = bodyLog[bodyLog.length - 1] ?? defaultBody;
+  const firstBody = bodyLog[0] ?? defaultBody;
 
   const now = new Date();
   const firstName = user?.name?.split(' ')[0] ?? 'there';
