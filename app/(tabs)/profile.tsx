@@ -4,6 +4,11 @@ import { useRouter } from 'expo-router';
 import { colors } from '@/constants/Colors';
 import { useAppStore, Goal, Language } from '@/store/useAppStore';
 import {
+  requestNotificationPermissions,
+  scheduleMealReminder,
+  cancelMealReminder,
+} from '@/utils/notifications';
+import {
   ACTIVITY_LEVELS, GOALS, Gender, ActivityLevel,
   calcTDEE, estimateBF, calcCalorieTarget, calcProteinPerKg,
 } from '@/utils/helpers';
@@ -76,7 +81,10 @@ function NumberRow({ label, value, onChange, unit }: {
 }
 
 export default function ProfileScreen() {
-  const { profile, updateProfile, isPremium, logout, user, language, setLanguage, unitSystem, setUnitSystem } = useAppStore();
+  const {
+    profile, updateProfile, isPremium, logout, user, language, setLanguage, unitSystem, setUnitSystem,
+    notificationsEnabled, mealReminderHour, mealReminderMinute, setNotificationsEnabled, setMealReminderTime,
+  } = useAppStore();
   const router = useRouter();
   const t = useT();
   const units = useUnits();
@@ -113,6 +121,33 @@ export default function ProfileScreen() {
       proteinPerKg: calcProteinPerKg(goal),
     });
     Alert.alert('Guardado', 'Tu perfil fue actualizado.');
+  };
+
+  const REMINDER_HOURS = [8, 12, 13, 18, 20];
+
+  const handleToggleNotifications = async () => {
+    if (notificationsEnabled) {
+      await cancelMealReminder();
+      setNotificationsEnabled(false);
+    } else {
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        Alert.alert(
+          t.notifications.section,
+          t.notifications.permissionDenied,
+        );
+        return;
+      }
+      await scheduleMealReminder(mealReminderHour, mealReminderMinute, language);
+      setNotificationsEnabled(true);
+    }
+  };
+
+  const handleReminderHour = async (h: number) => {
+    setMealReminderTime(h, 0);
+    if (notificationsEnabled) {
+      await scheduleMealReminder(h, 0, language);
+    }
   };
 
   const handleSignOut = async () => {
@@ -367,6 +402,64 @@ export default function ProfileScreen() {
             <Text style={{ fontSize: 11, color: colors.textDim }}>{us.sub}</Text>
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* Notifications */}
+      <SectionHeader title={t.notifications.section} />
+      <View style={{ backgroundColor: colors.card, borderRadius: 18, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+        {/* Toggle row */}
+        <TouchableOpacity
+          onPress={handleToggleNotifications}
+          activeOpacity={0.7}
+          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 16, gap: 14 }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{t.notifications.mealToggle}</Text>
+            <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{t.notifications.mealToggleSub}</Text>
+          </View>
+          <View style={{
+            width: 48, height: 28, borderRadius: 14,
+            backgroundColor: notificationsEnabled ? colors.green : colors.surface,
+            borderWidth: 1, borderColor: notificationsEnabled ? colors.green : colors.border,
+            justifyContent: 'center', paddingHorizontal: 3,
+          }}>
+            <View style={{
+              width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+              alignSelf: notificationsEnabled ? 'flex-end' : 'flex-start',
+            }} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Time picker — only when enabled */}
+        {notificationsEnabled && (
+          <View style={{ paddingHorizontal: 18, paddingBottom: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 14, marginBottom: 10 }}>
+              {t.notifications.reminderTime}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {REMINDER_HOURS.map((h) => {
+                const active = mealReminderHour === h;
+                const label = `${String(h).padStart(2, '0')}:00`;
+                return (
+                  <TouchableOpacity
+                    key={h}
+                    onPress={() => handleReminderHour(h)}
+                    activeOpacity={0.7}
+                    style={{
+                      flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+                      backgroundColor: active ? colors.greenSoft : colors.surface,
+                      borderWidth: 1, borderColor: active ? colors.green : colors.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? colors.green : colors.textMuted }}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Sign out */}

@@ -95,11 +95,12 @@ export default function StepsScreen() {
       const now = new Date();
       const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
       const { steps: todaySteps } = await Pedometer!.getStepCountAsync(midnight, now);
-      if (mounted) setSteps(todaySteps ?? 0);
+      const base = todaySteps ?? 0;
+      if (mounted) setSteps(base);
 
-      // Live updates
-      subRef.current = Pedometer!.watchStepCount(({ steps: delta }) => {
-        if (mounted) setSteps((s) => s + delta);
+      // Live updates — steps is cumulative from subscription start, not a delta
+      subRef.current = Pedometer!.watchStepCount(({ steps: fromSub }) => {
+        if (mounted) setSteps(base + fromSub);
       });
     })();
 
@@ -149,7 +150,7 @@ export default function StepsScreen() {
           ? t.steps.loadingText
           : available === false
           ? t.steps.noSensor
-          : `${Math.round(pct * 100)}% ${t.steps.pctLabel}`}
+          : `${Math.round(pct * 100)}${t.steps.pctLabel}`}
       </Text>
 
       {/* Stats row */}

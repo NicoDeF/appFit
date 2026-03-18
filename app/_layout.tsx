@@ -9,6 +9,24 @@ import { useAppStore } from '@/store/useAppStore';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/utils/supabase';
 import { loadUserData } from '@/utils/userSync';
+import { setupNotifications } from '@/utils/notifications';
+import { initPurchases, checkEntitlement, logoutPurchases } from '@/utils/purchases';
+
+// Only import expo-notifications if the native push token module is available.
+// TurboModuleRegistry.get() returns null without throwing, preventing Metro's
+// module-load error log in Expo Go / builds without native notification support.
+import { TurboModuleRegistry } from 'react-native';
+if (TurboModuleRegistry.get('ExpoPushTokenManager')) {
+  import('expo-notifications').then((N) => {
+    N.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  }).catch(() => {});
+}
 
 SplashScreen.preventAutoHideAsync();
 WebBrowser.maybeCompleteAuthSession();
@@ -22,14 +40,28 @@ export const unstable_settings = {
 const AUTH_SCREENS = ['welcome', 'login', 'register', 'forgot-password'];
 
 export default function RootLayout() {
-  const { isLoggedIn, hasCompletedOnboarding, login, logout, completeOnboarding, resetMealsIfNewDay, hydrateUserData } = useAppStore();
+  const { isLoggedIn, hasCompletedOnboarding, login, logout, completeOnboarding, resetMealsIfNewDay, hydrateUserData, setPremium } = useAppStore();
   const router = useRouter();
   const segments = useSegments();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    setupNotifications();
+  }, []);
+
+  // Hide splash and reset meals only after Zustand has hydrated from AsyncStorage.
+  // Calling resetMealsIfNewDay() before hydration is a no-op because AsyncStorage
+  // restores the persisted state (including lastMealDate) after this effect runs.
+  useEffect(() => {
+    const unsub = useAppStore.persist.onFinishHydration(() => {
+      resetMealsIfNewDay();
+    });
+    // If hydration already finished (fast device / already hydrated), call immediately.
+    if (useAppStore.persist.hasHydrated()) {
+      resetMealsIfNewDay();
+    }
     SplashScreen.hideAsync();
-    resetMealsIfNewDay();
+    return unsub;
   }, []);
 
   // Reset todayMeals whenever the app comes back to foreground on a new day
@@ -62,8 +94,10 @@ export default function RootLayout() {
         name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email?.split('@')[0] ?? 'User',
         email: supabaseUser.email!,
       });
-      // If user has a Supabase session they already registered — mark onboarding complete
       completeOnboarding();
+      // Init RevenueCat with the user's ID and sync entitlement to store
+      initPurchases(supabaseUser.id);
+      checkEntitlement().then((active) => { if (active) setPremium(true); }).catch(() => {});
       // Load user data from Supabase and merge into store
       loadUserData(supabaseUser.id).then(({ profile, weeklyPlan, bodyLog }) => {
         hydrateUserData({
@@ -93,6 +127,7 @@ export default function RootLayout() {
       if (session?.user && event === 'SIGNED_IN') {
         hydrateUser(session.user);
       } else if (event === 'SIGNED_OUT') {
+        logoutPurchases().catch(() => {});
         logout();
       } else if (event as string === 'TOKEN_REFRESH_FAILED') {
         logout();
@@ -129,6 +164,7 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="forgot-password" />
+        <Stack.Screen name="fasting" />
         <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
       </Stack>
     </>

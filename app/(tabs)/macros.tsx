@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors } from '@/constants/Colors';
 import { useAppStore } from '@/store/useAppStore';
 import { TRAINING_TYPES } from '@/constants/data';
@@ -8,15 +9,22 @@ import { MiniBar } from '@/components/ui/MiniBar';
 import { calcMacros } from '@/utils/helpers';
 import { searchFood, FoodResult } from '@/utils/foodSearch';
 import { useT } from '@/constants/i18n';
+import { pickAndResizeImage, scanFoodImage, ScanResult } from '@/utils/foodScanner';
 
 type SearchStatus = 'idle' | 'searching' | 'ai' | 'done' | 'error';
 
 export default function MacrosScreen() {
-  const { profile, weeklyPlan, todayMeals, addMeal, removeMeal } = useAppStore();
+  const { profile, weeklyPlan, todayMeals, addMeal, removeMeal, isPremium } = useAppStore();
   const t = useT();
+  const router = useRouter();
 
   const [showCustom, setShowCustom] = useState(false);
   const [custom, setCustom] = useState({ name: '', cal: '', p: '', c: '', f: '' });
+
+  // Scanner state
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [scanPreview, setScanPreview] = useState<ScanResult | null>(null);
 
   // Search state
   const [query, setQuery] = useState('');
@@ -92,6 +100,37 @@ export default function MacrosScreen() {
     setStatus('idle');
   };
 
+  const handleScan = async (source: 'camera' | 'gallery') => {
+    if (!isPremium) { router.push('/paywall'); return; }
+    setScanError('');
+    setScanPreview(null);
+    setScanning(true);
+    try {
+      const base64 = await pickAndResizeImage(source);
+      if (!base64) { setScanning(false); return; }
+      const result = await scanFoodImage(base64);
+      if (!result) {
+        setScanError('No se pudo identificar el alimento. Intenta con una foto más clara.');
+      } else {
+        setScanPreview(result);
+      }
+    } catch (e: any) {
+      if (e?.message === 'REQUIRES_NATIVE_BUILD') {
+        setScanError('La cámara IA requiere la app instalada (no Expo Go). Ejecuta: npx expo run:android');
+      } else {
+        setScanError('Error al analizar la imagen.');
+      }
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleAddScanned = () => {
+    if (!scanPreview) return;
+    addMeal({ id: Date.now(), ...scanPreview });
+    setScanPreview(null);
+  };
+
   const handleAddCustom = () => {
     if (!custom.name || !custom.cal) return;
     addMeal({
@@ -124,10 +163,72 @@ export default function MacrosScreen() {
       keyboardShouldPersistTaps="handled"
     >
       {/* Header */}
-      <View style={{ paddingHorizontal: 22, paddingTop: 58, paddingBottom: 8 }}>
-        <Text style={{ fontSize: 26, fontWeight: '800', color: colors.text }}>{t.macros.title}</Text>
-        <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 2 }}>{t.macros.subtitle}</Text>
+      <View style={{ paddingHorizontal: 22, paddingTop: 58, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <View>
+          <Text style={{ fontSize: 26, fontWeight: '800', color: colors.text }}>{t.macros.title}</Text>
+          <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 2 }}>{t.macros.subtitle}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => handleScan('camera')}
+          disabled={scanning}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            backgroundColor: colors.accent, borderRadius: 14,
+            paddingHorizontal: 14, paddingVertical: 10,
+          }}
+        >
+          {scanning
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <Text style={{ fontSize: 20 }}>📸</Text>
+          }
+          <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff' }}>
+            {scanning ? 'Analizando...' : 'Escanear'}
+          </Text>
+          {!isPremium && (
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 }}>
+              <Text style={{ fontSize: 9, fontWeight: '800', color: '#fff' }}>PRO</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
+
+      {/* Scan error */}
+      {scanError ? (
+        <View style={{ marginHorizontal: 16, marginBottom: 4, backgroundColor: colors.accentSoft, borderRadius: 12, padding: 12 }}>
+          <Text style={{ fontSize: 13, color: colors.accent }}>⚠️ {scanError}</Text>
+        </View>
+      ) : null}
+
+      {/* Scan preview */}
+      {scanPreview && (
+        <View style={{ marginHorizontal: 16, marginBottom: 8, backgroundColor: colors.card, borderRadius: 18, borderWidth: 1.5, borderColor: colors.green, padding: 16, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 16 }}>✅</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.green }}>Alimento identificado</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 }}>{scanPreview.name}</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>{scanPreview.portion}</Text>
+          </View>
+          <Text style={{ fontSize: 13, color: colors.textMuted }}>
+            {scanPreview.cal} kcal · P: {scanPreview.p}g · C: {scanPreview.c}g · G: {scanPreview.f}g
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={handleAddScanned}
+              style={{ flex: 1, backgroundColor: colors.green, borderRadius: 12, padding: 12, alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#fff' }}>+ Agregar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setScanPreview(null)}
+              style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textMuted }}>Descartar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Today's training badge — derived from weekly plan */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 }}>

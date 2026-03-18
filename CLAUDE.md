@@ -1,39 +1,53 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # appFIT — Claude Project Context
 
 ## What this app is
 A React Native / Expo fitness tracker targeting the **Spanish-speaking market**.
 Monetization via freemium + subscription paywall (monthly $6.99 / annual $39.99).
 
+## Commands
+```bash
+npx expo start          # Start dev server (scan QR with Expo Go)
+npx expo start --web    # Run in browser
+npx expo run:android    # Build & run on Android
+npx expo run:ios        # Build & run on iOS
+```
+No lint or test scripts are configured. TypeScript checking only via `tsc --noEmit`.
+
 ## Tech stack — installed & in use
 | Package | Purpose |
 |---|---|
-| `expo` ~52 | Framework + build tooling |
-| `expo-router` | File-based navigation (Stack + Tabs) |
-| `react-native` | Core mobile UI |
-| `typescript` | Language |
-| `zustand` | Global state management |
+| `expo` ~54 | Framework + build tooling |
+| `expo-router` ~6 | File-based navigation (Stack + Tabs) |
+| `react-native` ~0.81 | Core mobile UI |
+| `typescript` ~5.9 | Language |
+| `zustand` ^5 | Global state management |
 | `@react-native-async-storage/async-storage` | Persisting store to device |
+| `@supabase/supabase-js` ^2 | Backend sync (profile, body log, weekly plan) |
 | `react-native-svg` | SVG charts (CalorieRing, WeightChart, MacroRing) |
 | `expo-splash-screen` | Splash screen control |
 | `expo-status-bar` | Status bar styling |
 
 ## Must-do / backlog (prioritized)
 ### P0 — Needed before launch
-- [ ] **RevenueCat integration** — replace mock `setPremium(true)` with real IAP (iOS + Android)
-- [ ] **Real auth backend** — replace mock login/register with Supabase or Firebase Auth
-- [ ] **Daily meal reset** — `todayMeals` should clear at midnight automatically
+- [x] **RevenueCat integration** — `utils/purchases.ts` wrapper; init on login with user ID; `checkEntitlement` syncs to store on launch; real purchase + restore flow in `paywall.tsx`; `react-native-purchases` plugin in `app.json` — **requires `npm install react-native-purchases` + native rebuild**
+- [x] **Real auth backend** — Supabase Auth implemented: email/password + Google OAuth in `login.tsx` / `register.tsx`; session restored via `onAuthStateChange` in `_layout.tsx`; `forgot-password.tsx` screen exists
+- [x] **Daily meal reset** — called via `persist.onFinishHydration()` on launch (after AsyncStorage loads) and on foreground resume via `AppState` listener in `_layout.tsx`
 
 ### P1 — Core differentiators
 - [ ] **AI food scanner** — camera → Claude Vision API → auto-fill macros (premium feature)
 - [ ] **AI coaching tips** — replace hardcoded TIPS with Claude API personalized advice based on user profile
-- [ ] **Intermittent fasting tracker** — last meal / next meal timer with notifications
+- [x] **Intermittent fasting tracker** — live SVG ring timer, protocol picker (14/16/18/20/23h), history log; fasting phases timeline with live highlight; bold home card with live timer + ON/OFF badge + glow → `app/fasting.tsx`
 
 ### P2 — Growth & retention
-- [ ] **Push notifications** — daily meal reminders, streak alerts
+- [x] **Push notifications** — daily meal reminder (toggleable in profile, time picker) + fasting-complete scheduled notification; Expo Go safe via `TurboModuleRegistry.get('ExpoPushTokenManager')` guard → `utils/notifications.ts`
 - [ ] **Water tracker** — intake log with daily goal
 - [ ] **App Store listing** — Spanish keywords: "contar calorias", "dieta", "bajar de peso", "ayuno intermitente"
 - [ ] **Barcode scanner** — scan packaged foods (use Open Food Facts API)
-- [ ] **Streak / habit tracking** — consecutive days logged
+- [x] **Streak / habit tracking** — `currentStreak`, `longestStreak`, `streakDate` in store; increments on first `addMeal` each day; resets if a day is skipped; banner on home screen
 
 ### P3 — Nice to have
 - [ ] **Export data** — CSV/PDF body progress report
@@ -69,6 +83,10 @@ components/ui/
 utils/
   helpers.ts           # calcMacros, calcTDEE, estimateBF, calcCalorieTarget, calcProteinPerKg, pct
                        # Also exports: ACTIVITY_LEVELS, GOALS, Gender, ActivityLevel types
+  units.ts             # UnitSystem type ('metric' | 'imperial'), unit conversion helpers
+  supabase.ts          # Supabase client instance
+  userSync.ts          # syncProfile, syncWeeklyPlan, syncBodyEntry — fire-and-forget Supabase writes
+  foodSearch.ts        # Food search/lookup utility
 store/
   useAppStore.ts       # Zustand store — auth, profile, meals, body log, isPremium
 ```
@@ -79,15 +97,24 @@ store/
 - Logged in, no onboarding → `/onboarding`
 - Logged in + onboarded → `/(tabs)`
 
-Auth is **mock** (no backend). `login(user)` just sets `isLoggedIn: true`.
+Auth is **mock** (no real backend yet). `login(user)` just sets `isLoggedIn: true`.
 
 ## Key store state
 - `isLoggedIn`, `user` — auth
 - `isPremium` — paywall flag (set via `setPremium(true)`)
-- `profile` — weight, height, age, gender, activityLevel, goal, tdee, bodyFat, targetBf, proteinPerKg
-- `todayMeals` — array of Meal logged today
-- `bodyLog` — historical weight/BF entries
-- `weeklyPlan` — 7-day training type plan
+- `language` — `'es' | 'en'` (default `'es'`)
+- `unitSystem` — `'metric' | 'imperial'` (default `'metric'`)
+- `profile` — weight, targetWeight, height, age, gender, activityLevel, goal, tdee, bodyFat, targetBf, proteinPerKg
+- `todayMeals` — array of Meal logged today (auto-cleared on new day via `resetMealsIfNewDay`)
+- `lastMealDate` — ISO date string used for daily reset detection
+- `bodyLog` — historical BodyEntry[] (date, weight, bf, waist)
+- `weeklyPlan` — WeekDay[] where each day has `activities: DayActivity[]`
+- `trainingType` — current day's training type string
+
+Store persists to AsyncStorage under key `appfit-storage` (current schema version: **9**). When adding new fields, bump the version and add a migration case.
+
+## Supabase sync
+`updateProfile`, `addBodyEntry`, `updateWeeklyPlan`, `setLanguage`, `setUnitSystem` all fire-and-forget sync to Supabase via `utils/userSync.ts` when `user.id` is set. Failures are silently swallowed (`.catch(() => {})`).
 
 ## Color tokens (colors.ts)
 Always use `colors.*` tokens, never hardcode hex values.
@@ -100,6 +127,7 @@ Key: `bg`, `card`, `surface`, `border`, `text`, `textMuted`, `textDim`, `accent`
 - Font weights: 800 for titles, 700 for labels, 600 for secondary, 500 for body
 - Use `TouchableOpacity` for ALL taps. Do NOT use the `Btn` component — it has tap reliability issues
 - No external navigation libraries beyond expo-router
+- New modal/screen routes MUST be registered in the Stack in `app/_layout.tsx`
 
 ## Monetization
 - Paywall at `app/paywall.tsx` — Spanish UI, 7-day free trial CTA

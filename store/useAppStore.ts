@@ -46,6 +46,12 @@ export interface BodyEntry {
   waist: number;
 }
 
+export interface FastEntry {
+  startTime: number;
+  endTime: number;
+  goalHours: number;
+}
+
 export interface DayActivity {
   type: string;
   label?: string; // solo para type === 'custom'
@@ -72,6 +78,22 @@ interface AppState {
   language: Language;
   unitSystem: UnitSystem;
 
+  // Fasting
+  fastingActive: boolean;
+  fastingStartTime: number | null;
+  fastingGoalHours: number;
+  fastingHistory: FastEntry[];
+
+  // Notifications
+  notificationsEnabled: boolean;
+  mealReminderHour: number;
+  mealReminderMinute: number;
+
+  // Streak
+  currentStreak: number;
+  longestStreak: number;
+  streakDate: string; // ISO date of last day a meal was logged
+
   // Auth actions
   login: (user: User) => void;
   logout: () => void;
@@ -89,6 +111,11 @@ interface AppState {
   updateWeeklyPlan: (plan: WeekDay[]) => void;
   setLanguage: (lang: Language) => void;
   setUnitSystem: (system: UnitSystem) => void;
+  setNotificationsEnabled: (v: boolean) => void;
+  setMealReminderTime: (hour: number, minute: number) => void;
+  startFast: () => void;
+  stopFast: () => void;
+  setFastingGoal: (hours: number) => void;
   hydrateUserData: (data: {
     profile?: Partial<Profile>;
     weeklyPlan?: WeekDay[];
@@ -113,6 +140,16 @@ export const useAppStore = create<AppState>()(
       weeklyPlan: WEEKLY_PLAN,
       language: 'es' as Language,
       unitSystem: 'metric' as UnitSystem,
+      fastingActive: false,
+      fastingStartTime: null,
+      fastingGoalHours: 16,
+      fastingHistory: [],
+      notificationsEnabled: false,
+      mealReminderHour: 13,
+      mealReminderMinute: 0,
+      currentStreak: 0,
+      longestStreak: 0,
+      streakDate: '',
 
       login: (user) => set({ isLoggedIn: true, user }),
       logout: () => set({
@@ -135,9 +172,20 @@ export const useAppStore = create<AppState>()(
       setTrainingType: (type) => set({ trainingType: type }),
 
       addMeal: (meal) =>
-        set((state) => ({
-          todayMeals: [...state.todayMeals, { ...meal, addedAt: Date.now() }],
-        })),
+        set((state) => {
+          const newMeals = [...state.todayMeals, { ...meal, addedAt: Date.now() }];
+          const today = new Date().toISOString().slice(0, 10);
+          // Streak already counted today — just add the meal
+          if (state.streakDate === today) return { todayMeals: newMeals };
+          const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+          const newStreak = state.streakDate === yesterday ? state.currentStreak + 1 : 1;
+          return {
+            todayMeals: newMeals,
+            currentStreak: newStreak,
+            longestStreak: Math.max(state.longestStreak, newStreak),
+            streakDate: today,
+          };
+        }),
 
       removeMeal: (index) =>
         set((state) => ({
@@ -174,6 +222,23 @@ export const useAppStore = create<AppState>()(
         }
       },
 
+      setNotificationsEnabled: (v) => set({ notificationsEnabled: v }),
+      setMealReminderTime: (hour, minute) => set({ mealReminderHour: hour, mealReminderMinute: minute }),
+
+      startFast: () => set({ fastingActive: true, fastingStartTime: Date.now() }),
+
+      stopFast: () => {
+        const { fastingStartTime, fastingGoalHours, fastingHistory } = get();
+        if (fastingStartTime) {
+          const entry: FastEntry = { startTime: fastingStartTime, endTime: Date.now(), goalHours: fastingGoalHours };
+          set({ fastingActive: false, fastingStartTime: null, fastingHistory: [entry, ...fastingHistory].slice(0, 20) });
+        } else {
+          set({ fastingActive: false, fastingStartTime: null });
+        }
+      },
+
+      setFastingGoal: (hours) => set({ fastingGoalHours: hours }),
+
       setLanguage: (lang) => {
         set({ language: lang });
         const { user, profile, unitSystem } = get();
@@ -203,7 +268,7 @@ export const useAppStore = create<AppState>()(
     {
       name: 'appfit-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 9,
+      version: 12,
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
           persisted.isLoggedIn = persisted.isLoggedIn ?? true;
@@ -244,6 +309,22 @@ export const useAppStore = create<AppState>()(
               };
             });
           }
+        }
+        if (version < 10) {
+          persisted.fastingActive = false;
+          persisted.fastingStartTime = null;
+          persisted.fastingGoalHours = 16;
+          persisted.fastingHistory = [];
+        }
+        if (version < 11) {
+          persisted.notificationsEnabled = false;
+          persisted.mealReminderHour = 13;
+          persisted.mealReminderMinute = 0;
+        }
+        if (version < 12) {
+          persisted.currentStreak = 0;
+          persisted.longestStreak = 0;
+          persisted.streakDate = '';
         }
         return persisted;
       },

@@ -1,5 +1,7 @@
-import { ScrollView, View, Text } from 'react-native';
+import { useState, useEffect } from 'react';
+import { ScrollView, View, Text, TouchableOpacity } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
+import { useRouter } from 'expo-router';
 import { colors } from '@/constants/Colors';
 import { useAppStore } from '@/store/useAppStore';
 import { TRAINING_TYPES } from '@/constants/data';
@@ -54,7 +56,8 @@ function CalorieRing({ consumed, target, labelLeft, labelEaten, labelTarget, lab
 }
 
 export default function DashboardScreen() {
-  const { profile, weeklyPlan, todayMeals, bodyLog, user, language } = useAppStore();
+  const router = useRouter();
+  const { profile, weeklyPlan, todayMeals, bodyLog, user, language, fastingActive, fastingGoalHours, fastingStartTime, currentStreak, longestStreak } = useAppStore();
   const t = useT();
   const units = useUnits();
 
@@ -87,6 +90,27 @@ export default function DashboardScreen() {
   const defaultBody = { weight: profile.weight, bf: profile.bodyFat, waist: 0, date: '' };
   const latestBody = bodyLog[bodyLog.length - 1] ?? defaultBody;
   const firstBody = bodyLog[0] ?? defaultBody;
+
+  // Live fasting timer
+  const [fastNow, setFastNow] = useState(Date.now());
+  useEffect(() => {
+    if (!fastingActive) return;
+    const id = setInterval(() => setFastNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [fastingActive]);
+
+  const fastElapsed = fastingActive && fastingStartTime ? Math.max(0, fastNow - fastingStartTime) : 0;
+  const fastGoalMs = fastingGoalHours * 3_600_000;
+  const fastProgress = Math.min(1, fastElapsed / fastGoalMs);
+  const fastDone = fastElapsed >= fastGoalMs;
+
+  function fmtFast(ms: number) {
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
 
   const now = new Date();
   const firstName = user?.name?.split(' ')[0] ?? 'there';
@@ -127,6 +151,37 @@ export default function DashboardScreen() {
           </View>
         </View>
       </View>
+
+      {/* Streak Banner */}
+      {currentStreak > 0 && (
+        <View style={{
+          marginHorizontal: 16, marginBottom: 12,
+          backgroundColor: colors.card, borderRadius: 18,
+          borderWidth: 1, borderColor: `${colors.yellow}55`,
+          paddingHorizontal: 18, paddingVertical: 13,
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ fontSize: 26 }}>🔥</Text>
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.yellow }}>
+                {currentStreak} {language === 'es' ? 'días seguidos' : 'day streak'}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 1 }}>
+                {language === 'es' ? '¡Sigue así, no rompas la racha!' : "Keep it up, don't break the streak!"}
+              </Text>
+            </View>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 11, color: colors.textDim, fontWeight: '600' }}>
+              {language === 'es' ? 'MEJOR' : 'BEST'}
+            </Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textMuted }}>
+              {longestStreak}🏆
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Hero Calorie Card */}
       <View style={{ marginHorizontal: 16, backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 24, alignItems: 'center', gap: 20 }}>
@@ -180,6 +235,102 @@ export default function DashboardScreen() {
           </View>
         ))}
       </View>
+
+      {/* Fasting Card */}
+      {(() => {
+        const glowColor = fastingActive ? (fastDone ? colors.yellow : colors.green) : colors.accent;
+        const glowSoft  = fastingActive ? (fastDone ? `${colors.yellow}18` : colors.greenSoft) : colors.accentSoft;
+        const locale    = language === 'es' ? 'es-ES' : 'en-US';
+        return (
+          <TouchableOpacity
+            onPress={() => router.push('/fasting')}
+            activeOpacity={0.82}
+            style={{
+              marginHorizontal: 16, marginTop: 12,
+              backgroundColor: colors.card,
+              borderRadius: 24,
+              borderWidth: 1.5, borderColor: glowColor,
+              padding: 22, gap: 16,
+              shadowColor: glowColor,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.45,
+              shadowRadius: 18,
+              elevation: 10,
+            }}
+          >
+            {/* Top row */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 38, height: 38, borderRadius: 19,
+                  backgroundColor: glowSoft,
+                  borderWidth: 1, borderColor: glowColor,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ fontSize: 18 }}>{fastingActive ? (fastDone ? '🎉' : '🔥') : '⏱'}</Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.2, color: glowColor }}>
+                    {fastingActive ? (fastDone ? (language === 'es' ? '¡Meta alcanzada!' : 'Goal reached!') : (language === 'es' ? 'Ayuno activo' : 'Fast active')) : t.fasting.title}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 1 }}>
+                    {language === 'es' ? `Protocolo ${fastingGoalHours}:${24 - fastingGoalHours}` : `${fastingGoalHours}:${24 - fastingGoalHours} protocol`}
+                  </Text>
+                </View>
+              </View>
+              {/* Status badge */}
+              <View style={{
+                paddingHorizontal: 16, paddingVertical: 8,
+                borderRadius: 20,
+                backgroundColor: fastingActive ? glowColor : colors.surface,
+                borderWidth: 1.5, borderColor: glowColor,
+              }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: fastingActive ? '#fff' : glowColor, letterSpacing: 0.5 }}>
+                  {fastingActive ? 'ON' : 'OFF'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Timer / inactive message */}
+            {fastingActive ? (
+              <View style={{ alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 46, fontWeight: '800', color: glowColor, letterSpacing: 3, fontVariant: ['tabular-nums'] }}>
+                  {fmtFast(fastElapsed)}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '600' }}>
+                  {t.fasting.elapsed} · {t.fasting.goal} {fastingGoalHours}h
+                </Text>
+              </View>
+            ) : (
+              <View style={{ alignItems: 'center', gap: 4 }}>
+                <Text style={{ fontSize: 32, color: glowColor, opacity: 0.7 }}>⏱</Text>
+                <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: '600' }}>{t.fasting.inactive}</Text>
+                <Text style={{ fontSize: 12, color: glowColor, fontWeight: '700', marginTop: 2 }}>
+                  {language === 'es' ? 'Toca para iniciar →' : 'Tap to start →'}
+                </Text>
+              </View>
+            )}
+
+            {/* Progress bar */}
+            {fastingActive && (
+              <View style={{ gap: 6 }}>
+                <View style={{ height: 7, backgroundColor: colors.surface, borderRadius: 4, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.round(fastProgress * 100)}%`, height: '100%', backgroundColor: glowColor, borderRadius: 4 }} />
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                    {fastingStartTime ? new Date(fastingStartTime).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: glowColor, fontWeight: '700' }}>
+                    {Math.round(fastProgress * 100)}%
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>{fastingGoalHours}h</Text>
+                </View>
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })()}
 
       {/* Body Stats */}
       <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 16, marginTop: 12 }}>
